@@ -56,7 +56,7 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { pad ->
                         when (val s = vm.screen) {
-                            Screen.Home -> HomeScreen(vm, ready, pad)
+                            Screen.Home -> HomeScreen(vm, ready, engineError, pad)
                             is Screen.Browser -> BrowserScreen(vm, s, pad)
                             Screen.AddAccount -> AddAccountScreen(vm, pad)
                             Screen.Search -> SearchScreen(vm, pad)

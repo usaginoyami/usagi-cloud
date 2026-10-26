@@ -120,15 +120,20 @@ private fun TopBar(title: String, onBack: (() -> Unit)?, actions: @Composable ()
 // ---------- Home: todas as contas num lugar só ----------
 
 @Composable
-fun HomeScreen(vm: CloudViewModel, engineReady: Boolean, pad: PaddingValues) {
+fun HomeScreen(vm: CloudViewModel, engineReady: Boolean, engineError: String?, pad: PaddingValues) {
     Box(Modifier.fillMaxSize().padding(pad)) {
         Column(Modifier.fillMaxSize()) {
             TopBar("Usagi Cloud", null) {
                 IconButton(onClick = { vm.goTo(Screen.Search) }) { Icon(Icons.Default.Search, "Buscar") }
                 IconButton(onClick = { vm.refreshAccounts() }) { Icon(Icons.Default.Refresh, "Atualizar") }
             }
-            if (!engineReady || vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if ((!engineReady && engineError == null) || vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             when {
+                !engineReady && engineError != null -> Column(Modifier.padding(24.dp)) {
+                    Text("O motor de nuvens não iniciou", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(engineError, color = MaterialTheme.colorScheme.error)
+                }
                 !engineReady -> Text(
                     "Iniciando o motor de nuvens...",
                     Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant

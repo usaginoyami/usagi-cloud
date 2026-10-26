@@ -12,7 +12,11 @@ O app não implementa cada nuvem na mão: ele roda o [rclone](https://rclone.org
 - **Copiar/Mover entre nuvens** (ex.: Drive -> Mega) com "Colar aqui" em qualquer pasta
 - **Busca unificada** em todas as contas ao mesmo tempo
 
-## Como rodar
+## Baixar o APK pronto (sem compilar nada)
+
+No GitHub: aba **Actions -> Build APK -> Run workflow**. Ao terminar (uns 10 min), baixe o artefato `UsagiCloud-debug-apk` em *Artifacts*. O workflow compila o rclone para Android e já embute no APK.
+
+## Como rodar pelo Android Studio
 
 1. Abra a pasta no Android Studio (ele baixa o Gradle 8.9 sozinho).
 2. **Coloque o rclone** em `app/src/main/jniLibs/arm64-v8a/librclone.so` (veja abaixo).
