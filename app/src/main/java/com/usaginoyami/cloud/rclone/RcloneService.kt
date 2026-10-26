@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.usaginoyami.cloud.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +49,12 @@ class RcloneService : Service() {
     private fun startRclone() {
         val bin = File(applicationInfo.nativeLibraryDir, "librclone.so")
         if (!bin.exists()) {
-            _error.value = "Binário do rclone não encontrado. Veja o README (jniLibs/arm64-v8a/librclone.so)."
+            val dir = File(applicationInfo.nativeLibraryDir)
+            _error.value = "Binário do rclone não encontrado.\n" +
+                "Pasta: ${dir.absolutePath}\n" +
+                "Arquivos: ${dir.list()?.joinToString().orEmpty().ifEmpty { "(vazia)" }}\n" +
+                "ABIs do aparelho: ${Build.SUPPORTED_ABIS.joinToString()}\n" +
+                "Versão do app: ${BuildConfig.APP_BUILD}"
             return
         }
         val home = File(filesDir, "rclone").apply { mkdirs() }

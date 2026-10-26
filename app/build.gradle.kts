@@ -15,6 +15,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
+        buildConfigField("String", "APP_BUILD", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "local"}\"")
     }
 
     buildTypes {
@@ -29,7 +30,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     packaging {
         jniLibs {
