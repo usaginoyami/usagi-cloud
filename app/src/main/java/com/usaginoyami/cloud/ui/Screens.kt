@@ -252,7 +252,7 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
                         )
                     }
                 }
-                items(vm.files, key = { it.path }) { f ->
+                items(vm.files) { f ->
                     FileRow(vm, f) { if (f.isDir) vm.open(s.account, f.path) }
                 }
             }
@@ -461,7 +461,7 @@ fun SearchScreen(vm: CloudViewModel, pad: PaddingValues) {
             )
         }
         LazyColumn {
-            items(vm.searchResults, key = { it.remote + ":" + it.path }) { f ->
+            items(vm.searchResults) { f ->
                 ListItem(
                     modifier = Modifier.clickable {
                         val target = if (f.isDir) f.path else f.path.substringBeforeLast('/', "")

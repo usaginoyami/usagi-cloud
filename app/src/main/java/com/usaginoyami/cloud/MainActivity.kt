@@ -8,6 +8,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,6 +56,18 @@ class MainActivity : ComponentActivity() {
                 }
                 LaunchedEffect(engineError) {
                     engineError?.let { snackbar.showSnackbar(it) }
+                }
+
+                var crash by remember { mutableStateOf(UsagiApp.readCrash(this@MainActivity)) }
+                crash?.let { text ->
+                    AlertDialog(
+                        onDismissRequest = { UsagiApp.clearCrash(this@MainActivity); crash = null },
+                        title = { Text("O app fechou da última vez") },
+                        text = { Text(text.take(1500), modifier = Modifier.verticalScroll(rememberScrollState())) },
+                        confirmButton = {
+                            TextButton(onClick = { UsagiApp.clearCrash(this@MainActivity); crash = null }) { Text("OK") }
+                        },
+                    )
                 }
 
                 BackHandler(enabled = vm.screen !is Screen.Home) { vm.back() }
