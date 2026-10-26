@@ -1,0 +1,8 @@
+Coloque aqui o binário do rclone para Android (arm64) com o nome EXATO:
+
+    librclone.so
+
+O app executa esse arquivo como "rclone rcd". Sem ele, o app abre mas mostra
+"Binário do rclone não encontrado".
+
+Veja o README.md na raiz do projeto para saber como obter/compilar.
