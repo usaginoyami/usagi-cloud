@@ -1,7 +1,10 @@
 package com.usaginoyami.cloud
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
+import androidx.core.content.FileProvider
 import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +16,7 @@ import com.usaginoyami.cloud.rclone.CloudFile
 import com.usaginoyami.cloud.rclone.CloudQuota
 import com.usaginoyami.cloud.rclone.RcloneApi
 import com.usaginoyami.cloud.rclone.RcloneService
+import com.usaginoyami.cloud.rclone.TransferManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -24,6 +28,7 @@ sealed interface Screen {
     data class Browser(val account: String, val path: String) : Screen
     data object AddAccount : Screen
     data object Search : Screen
+    data object Transfers : Screen
 }
 
 data class Clip(val file: CloudFile, val move: Boolean)
@@ -51,6 +56,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
             ?: getApplication<Application>().filesDir).absolutePath
 
     init {
+        File(getApplication<Application>().cacheDir, "view").deleteRecursively()
         RcloneService.start(getApplication())
         viewModelScope.launch {
             RcloneService.ready.first { it }
@@ -103,7 +109,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 if (s.path.isEmpty()) goTo(Screen.Home)
                 else open(s.account, s.path.substringBeforeLast('/', ""))
             }
-            is Screen.AddAccount, is Screen.Search -> goTo(Screen.Home)
+            is Screen.AddAccount, is Screen.Search, is Screen.Transfers -> goTo(Screen.Home)
             Screen.Home -> return false
         }
         return true
@@ -121,8 +127,11 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
 
     fun rename(f: CloudFile, newName: String) = run({ RcloneApi.rename(f, newName) }) { reload() }
 
-    fun download(f: CloudFile) = run({ RcloneApi.download(f, downloadDir) }) {
-        message = "Baixado em $downloadDir"
+    fun download(f: CloudFile) {
+        TransferManager.enqueue("${f.name}", "Baixando", RcloneApi.downloadRequest(f, downloadDir)) { ok ->
+            message = if (ok) "Baixado em $downloadDir" else "Falha ao baixar ${f.name}"
+        }
+        message = "Baixando ${f.name} (veja em Transferências)"
     }
 
     fun copy(f: CloudFile) { clip = Clip(f, move = false); message = "Copiado. Abra outra pasta/nuvem e toque em Colar." }
@@ -133,11 +142,18 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
         val c = clip ?: return
         val s = screen as? Screen.Browser ?: return
         val dst = if (s.path.isEmpty()) c.file.name else "${s.path}/${c.file.name}"
-        run({ RcloneApi.copyOrMove(c.file, s.account, dst, c.move) }) {
-            clip = null
-            message = if (c.move) "Movido" else "Copiado"
+        val req = RcloneApi.copyRequest(c.file, s.account, dst, c.move)
+        TransferManager.enqueue(
+            "${c.file.remote} → ${s.account}: ${c.file.name}",
+            if (c.move) "Movendo" else "Copiando",
+            req,
+            deleteAfter = if (c.move && !c.file.isDir) c.file else null,
+        ) { ok ->
+            message = if (ok) (if (c.move) "Movido" else "Copiado") else "Falha na transferência"
             reload()
         }
+        clip = null
+        message = "Transferência iniciada (veja em Transferências)"
     }
 
     fun upload(uri: Uri) {
@@ -155,13 +171,42 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                     tmp.outputStream().use { input.copyTo(it) }
                 }
                 val dst = if (s.path.isEmpty()) name else "${s.path}/$name"
-                try {
-                    RcloneApi.upload(tmpDir.absolutePath, name, s.account, dst)
-                } finally {
+                TransferManager.enqueue(name, "Enviando", RcloneApi.uploadRequest(tmpDir.absolutePath, name, s.account, dst)) { ok ->
                     tmp.delete()
+                    message = if (ok) "Enviado: $name" else "Falha ao enviar $name"
+                    reload()
                 }
             }
-        }) { message = "Enviado"; reload() }
+        }) { message = "Envio iniciado (veja em Transferências)" }
+    }
+
+    // ---------- Visualizar / compartilhar ----------
+
+    /** Baixa o arquivo para o cache e abre (ou compartilha) com outro app. */
+    fun openFile(f: CloudFile, share: Boolean) {
+        if (f.isDir) return
+        val ctx = getApplication<Application>()
+        val dir = File(ctx.cacheDir, "view").apply { mkdirs() }
+        TransferManager.enqueue(f.name, "Abrindo", RcloneApi.downloadRequest(f, dir.absolutePath)) { ok ->
+            if (!ok) { message = "Não foi possível abrir ${f.name}"; return@enqueue }
+            try {
+                val file = File(dir, f.name)
+                val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+                val mime = MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(file.extension.lowercase()) ?: "*/*"
+                val intent = if (share) {
+                    Intent(Intent.ACTION_SEND).apply { type = mime; putExtra(Intent.EXTRA_STREAM, uri) }
+                } else {
+                    Intent(Intent.ACTION_VIEW).apply { setDataAndType(uri, mime) }
+                }
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val chooser = Intent.createChooser(intent, f.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(chooser)
+            } catch (e: Exception) {
+                message = "Nenhum app para abrir este arquivo"
+            }
+        }
+        message = "Preparando ${f.name}..."
     }
 
     // ---------- Contas ----------

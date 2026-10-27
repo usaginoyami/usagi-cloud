@@ -25,6 +25,7 @@ data class CloudFile(
     val size: Long,
     val modTime: String,
     val isDir: Boolean,
+    val md5: String = "",
 )
 
 class RcloneException(message: String) : Exception(message)
@@ -173,6 +174,7 @@ object RcloneApi {
         size = o.optLong("Size", 0),
         modTime = o.optString("ModTime"),
         isDir = o.optBoolean("IsDir"),
+        md5 = o.optJSONObject("Hashes")?.optString("md5").orEmpty(),
     )
 
     suspend fun mkdir(account: String, path: String) {
@@ -210,26 +212,54 @@ object RcloneApi {
         }
     }
 
-    /** Baixa para uma pasta local do app. */
-    suspend fun download(f: CloudFile, localDir: String) {
+    // ---------- Transferências (jobs assíncronos com progresso) ----------
+
+    /** Pedido de cópia/movimentação entre nuvens: (comando, corpo). Arquivo movido é apagado depois pelo gerenciador. */
+    fun copyRequest(f: CloudFile, dstAccount: String, dstPath: String, move: Boolean): Pair<String, JSONObject> =
         if (f.isDir) {
-            call("sync/copy", JSONObject().put("srcFs", "${f.remote}:${f.path}").put("dstFs", "$localDir/${f.name}"))
+            (if (move) "sync/move" else "sync/copy") to JSONObject()
+                .put("srcFs", "${f.remote}:${f.path}").put("dstFs", "$dstAccount:$dstPath")
+                .put("deleteEmptySrcDirs", move)
         } else {
-            call(
-                "operations/copyfile",
-                JSONObject().put("srcFs", "${f.remote}:").put("srcRemote", f.path)
-                    .put("dstFs", localDir).put("dstRemote", f.name)
-            )
+            "operations/copyfile" to JSONObject()
+                .put("srcFs", "${f.remote}:").put("srcRemote", f.path)
+                .put("dstFs", "$dstAccount:").put("dstRemote", dstPath)
         }
+
+    /** Pedido de download para uma pasta local. */
+    fun downloadRequest(f: CloudFile, localDir: String): Pair<String, JSONObject> =
+        if (f.isDir) {
+            "sync/copy" to JSONObject().put("srcFs", "${f.remote}:${f.path}").put("dstFs", "$localDir/${f.name}")
+        } else {
+            "operations/copyfile" to JSONObject()
+                .put("srcFs", "${f.remote}:").put("srcRemote", f.path)
+                .put("dstFs", localDir).put("dstRemote", f.name)
+        }
+
+    /** Pedido de envio de um arquivo local para a nuvem. */
+    fun uploadRequest(localDir: String, localName: String, account: String, dstPath: String): Pair<String, JSONObject> =
+        "operations/copyfile" to JSONObject()
+            .put("srcFs", localDir).put("srcRemote", localName)
+            .put("dstFs", "$account:").put("dstRemote", dstPath)
+
+    data class JobStats(val bytes: Long, val total: Long, val speed: Double)
+
+    suspend fun startJob(cmd: String, body: JSONObject, group: String): Long =
+        call(cmd, body.put("_async", true).put("_group", group)).getLong("jobid")
+
+    suspend fun jobStatus(jobId: Long): JSONObject = call("job/status", JSONObject().put("jobid", jobId))
+
+    suspend fun jobStats(group: String): JobStats {
+        val j = call("core/stats", JSONObject().put("group", group))
+        return JobStats(j.optLong("bytes"), j.optLong("totalBytes"), j.optDouble("speed", 0.0))
     }
 
-    /** Envia um arquivo local (já copiado para o cache do app) para a nuvem. */
-    suspend fun upload(localDir: String, localName: String, account: String, dstPath: String) {
-        call(
-            "operations/copyfile",
-            JSONObject().put("srcFs", localDir).put("srcRemote", localName)
-                .put("dstFs", "$account:").put("dstRemote", dstPath)
-        )
+    suspend fun stopJob(jobId: Long) {
+        try { call("job/stop", JSONObject().put("jobid", jobId)) } catch (_: Exception) { }
+    }
+
+    suspend fun clearStats(group: String) {
+        try { call("core/stats-delete", JSONObject().put("group", group)) } catch (_: Exception) { }
     }
 
     /**

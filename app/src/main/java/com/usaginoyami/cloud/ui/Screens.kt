@@ -24,7 +24,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -60,6 +62,10 @@ import com.usaginoyami.cloud.CloudViewModel
 import com.usaginoyami.cloud.Screen
 import com.usaginoyami.cloud.rclone.CloudAccount
 import com.usaginoyami.cloud.rclone.CloudFile
+import com.usaginoyami.cloud.rclone.TState
+import com.usaginoyami.cloud.rclone.Transfer
+import com.usaginoyami.cloud.rclone.TransferManager
+import androidx.compose.runtime.collectAsState
 
 // ---------- Helpers ----------
 
@@ -124,6 +130,7 @@ fun HomeScreen(vm: CloudViewModel, engineReady: Boolean, engineError: String?, p
     Box(Modifier.fillMaxSize().padding(pad)) {
         Column(Modifier.fillMaxSize()) {
             TopBar("Usagi Cloud", null) {
+                TransfersButton(vm)
                 IconButton(onClick = { vm.goTo(Screen.Search) }) { Icon(Icons.Default.Search, "Buscar") }
                 IconButton(onClick = { vm.refreshAccounts() }) { Icon(Icons.Default.Refresh, "Atualizar") }
             }
@@ -239,6 +246,7 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
     Box(Modifier.fillMaxSize().padding(pad)) {
         Column(Modifier.fillMaxSize()) {
             TopBar(title, onBack = { vm.back() }) {
+                TransfersButton(vm)
                 IconButton(onClick = { vm.reload() }) { Icon(Icons.Default.Refresh, "Atualizar") }
             }
             if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -253,7 +261,7 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
                     }
                 }
                 items(vm.files) { f ->
-                    FileRow(vm, f) { if (f.isDir) vm.open(s.account, f.path) }
+                    FileRow(vm, f) { if (f.isDir) vm.open(s.account, f.path) else vm.openFile(f, share = false) }
                 }
             }
             vm.clip?.let { c ->
@@ -310,6 +318,10 @@ private fun FileRow(vm: CloudViewModel, f: CloudFile, onClick: () -> Unit) {
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Mais") }
                 DropdownMenu(menu, { menu = false }) {
+                    if (!f.isDir) {
+                        DropdownMenuItem(text = { Text("Abrir") }, onClick = { menu = false; vm.openFile(f, share = false) })
+                        DropdownMenuItem(text = { Text("Compartilhar") }, onClick = { menu = false; vm.openFile(f, share = true) })
+                    }
                     DropdownMenuItem(text = { Text("Baixar") }, onClick = { menu = false; vm.download(f) })
                     DropdownMenuItem(text = { Text("Copiar para...") }, onClick = { menu = false; vm.copy(f) })
                     DropdownMenuItem(text = { Text("Mover para...") }, onClick = { menu = false; vm.cut(f) })
@@ -477,6 +489,94 @@ fun SearchScreen(vm: CloudViewModel, pad: PaddingValues) {
                     headlineContent = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text("${f.remote}/${f.path}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
+            }
+        }
+    }
+}
+
+
+// ---------- Transferências ----------
+
+@Composable
+private fun TransfersButton(vm: CloudViewModel) {
+    val list by TransferManager.list.collectAsState()
+    val running = list.count { it.state == TState.RUNNING }
+    IconButton(onClick = { vm.goTo(Screen.Transfers) }) {
+        Box {
+            Icon(Icons.Default.SwapVert, "Transferências")
+            if (running > 0) {
+                Text(
+                    "$running",
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TransfersScreen(vm: CloudViewModel, pad: PaddingValues) {
+    val list by TransferManager.list.collectAsState()
+    Column(Modifier.fillMaxSize().padding(pad)) {
+        TopBar("Transferências", onBack = { vm.back() }) {
+            TextButton(onClick = { TransferManager.clearFinished() }) { Text("Limpar") }
+        }
+        if (list.isEmpty()) {
+            Text(
+                "Nenhuma transferência ainda. Copie, mova, baixe ou envie arquivos e o progresso aparece aqui.",
+                Modifier.padding(24.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(list) { t -> TransferRow(t) }
+        }
+    }
+}
+
+@Composable
+private fun TransferRow(t: Transfer) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(t.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    val status = when (t.state) {
+                        TState.RUNNING -> t.kind
+                        TState.DONE -> "Concluído"
+                        TState.FAILED -> "Falhou"
+                        TState.CANCELED -> "Cancelado"
+                    }
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (t.state == TState.RUNNING) {
+                    IconButton(onClick = { TransferManager.cancel(t.id) }) { Icon(Icons.Default.Close, "Cancelar") }
+                }
+            }
+            if (t.state == TState.RUNNING) {
+                Spacer(Modifier.height(8.dp))
+                if (t.total > 0) {
+                    LinearProgressIndicator(
+                        progress = { (t.bytes.toFloat() / t.total.toFloat()).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "${formatSize(t.bytes)} de ${formatSize(t.total)} • ${formatSize(t.speed.toLong())}/s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+            if (t.state == TState.FAILED && t.error != null) {
+                Text(t.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

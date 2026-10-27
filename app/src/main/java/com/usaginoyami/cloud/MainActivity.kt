@@ -29,6 +29,7 @@ import com.usaginoyami.cloud.ui.AddAccountScreen
 import com.usaginoyami.cloud.ui.BrowserScreen
 import com.usaginoyami.cloud.ui.HomeScreen
 import com.usaginoyami.cloud.ui.SearchScreen
+import com.usaginoyami.cloud.ui.TransfersScreen
 import com.usaginoyami.cloud.ui.UsagiTheme
 
 class MainActivity : ComponentActivity() {
@@ -79,6 +80,7 @@ class MainActivity : ComponentActivity() {
                             is Screen.Browser -> BrowserScreen(vm, s, pad)
                             Screen.AddAccount -> AddAccountScreen(vm, pad)
                             Screen.Search -> SearchScreen(vm, pad)
+                            Screen.Transfers -> TransfersScreen(vm, pad)
                         }
                     }
                 }
