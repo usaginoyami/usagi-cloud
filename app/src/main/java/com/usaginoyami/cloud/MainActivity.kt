@@ -30,6 +30,7 @@ import com.usaginoyami.cloud.ui.BrowserScreen
 import com.usaginoyami.cloud.ui.HomeScreen
 import com.usaginoyami.cloud.ui.SearchScreen
 import com.usaginoyami.cloud.ui.StorageScreen
+import com.usaginoyami.cloud.ui.SyncScreen
 import com.usaginoyami.cloud.ui.TransfersScreen
 import com.usaginoyami.cloud.ui.UsagiTheme
 
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Search -> SearchScreen(vm, pad)
                             Screen.Transfers -> TransfersScreen(vm, pad)
                             Screen.Storage -> StorageScreen(vm, pad)
+                            Screen.Sync -> SyncScreen(vm, pad)
                         }
                     }
                 }

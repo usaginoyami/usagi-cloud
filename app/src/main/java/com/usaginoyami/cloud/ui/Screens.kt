@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Refresh
@@ -132,6 +133,7 @@ fun HomeScreen(vm: CloudViewModel, engineReady: Boolean, engineError: String?, p
         Column(Modifier.fillMaxSize()) {
             TopBar("Usagi Cloud", null) {
                 TransfersButton(vm)
+                IconButton(onClick = { vm.goTo(Screen.Sync) }) { Icon(Icons.Default.Sync, "Sync automático") }
                 IconButton(onClick = { vm.goTo(Screen.Storage) }) { Icon(Icons.Default.PieChart, "Espaço e duplicados") }
                 IconButton(onClick = { vm.goTo(Screen.Search) }) { Icon(Icons.Default.Search, "Buscar") }
                 IconButton(onClick = { vm.refreshAccounts() }) { Icon(Icons.Default.Refresh, "Atualizar") }

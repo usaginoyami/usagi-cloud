@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Orelhas de coelho -->
+    <group android:rotation="-9" android:pivotX="45" android:pivotY="44">
+        <path
+            android:fillColor="#E53935"
+            android:pathData="M40,30 a5,13 0 1,0 10,0 a5,13 0 1,0 -10,0 z" />
+    </group>
+    <group android:rotation="9" android:pivotX="63" android:pivotY="44">
+        <path
+            android:fillColor="#E53935"
+            android:pathData="M58,30 a5,13 0 1,0 10,0 a5,13 0 1,0 -10,0 z" />
+    </group>
+
+    <!-- Nuvem -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M26,58 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 z" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M37,50 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0 z" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M57,57 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 z" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M36,58 h33 v10 h-33 z" />
+
+    <!-- Olhos -->
+    <path
+        android:fillColor="#0D0D0D"
+        android:pathData="M44,56 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0 z" />
+    <path
+        android:fillColor="#0D0D0D"
+        android:pathData="M57,56 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0 z" />
+</vector>

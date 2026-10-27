@@ -17,6 +17,11 @@ import com.usaginoyami.cloud.rclone.CloudQuota
 import com.usaginoyami.cloud.rclone.RcloneApi
 import com.usaginoyami.cloud.rclone.RcloneService
 import com.usaginoyami.cloud.rclone.TransferManager
+import com.usaginoyami.cloud.sync.SyncRule
+import com.usaginoyami.cloud.sync.SyncScheduler
+import com.usaginoyami.cloud.sync.SyncStore
+import org.json.JSONObject
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -30,6 +35,7 @@ sealed interface Screen {
     data object Search : Screen
     data object Transfers : Screen
     data object Storage : Screen
+    data object Sync : Screen
 }
 
 data class Clip(val file: CloudFile, val move: Boolean)
@@ -110,7 +116,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 if (s.path.isEmpty()) goTo(Screen.Home)
                 else open(s.account, s.path.substringBeforeLast('/', ""))
             }
-            is Screen.AddAccount, is Screen.Search, is Screen.Transfers, is Screen.Storage -> goTo(Screen.Home)
+            is Screen.AddAccount, is Screen.Search, is Screen.Transfers, is Screen.Storage, is Screen.Sync -> goTo(Screen.Home)
             Screen.Home -> return false
         }
         return true
@@ -179,6 +185,57 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }) { message = "Envio iniciado (veja em Transferências)" }
+    }
+
+    // ---------- Sync automático ----------
+
+    var syncRules by mutableStateOf<List<SyncRule>>(SyncStore.load(app))
+        private set
+
+    fun addSync(local: String, account: String, remote: String, hours: Int, wifiOnly: Boolean) {
+        val ctx = getApplication<Application>()
+        val rule = SyncRule(
+            id = UUID.randomUUID().toString(),
+            localPath = local.trim().trimEnd('/'),
+            account = account,
+            remotePath = remote.trim().trim('/'),
+            everyHours = hours,
+            wifiOnly = wifiOnly,
+        )
+        syncRules = syncRules + rule
+        SyncStore.save(ctx, syncRules)
+        SyncScheduler.schedule(ctx, rule)
+        message = "Regra criada. Ela roda a cada ${hours}h."
+    }
+
+    fun removeSync(r: SyncRule) {
+        val ctx = getApplication<Application>()
+        SyncScheduler.cancel(ctx, r.id)
+        syncRules = syncRules.filterNot { it.id == r.id }
+        SyncStore.save(ctx, syncRules)
+    }
+
+    fun toggleSync(r: SyncRule, enabled: Boolean) {
+        val ctx = getApplication<Application>()
+        val upd = r.copy(enabled = enabled)
+        syncRules = syncRules.map { if (it.id == r.id) upd else it }
+        SyncStore.save(ctx, syncRules)
+        SyncScheduler.schedule(ctx, upd)
+    }
+
+    /** Roda agora pela fila de transferências (com progresso). */
+    fun runSyncNow(r: SyncRule) {
+        val ctx = getApplication<Application>()
+        val req = "sync/copy" to JSONObject()
+            .put("srcFs", r.localPath).put("dstFs", "${r.account}:${r.remotePath}")
+        TransferManager.enqueue("${r.localPath} → ${r.account}:${r.remotePath}", "Sincronizando", req) { ok ->
+            SyncStore.update(ctx, r.id) {
+                it.copy(lastRun = System.currentTimeMillis(), lastResult = if (ok) "OK" else "Falhou")
+            }
+            syncRules = SyncStore.load(ctx)
+            message = if (ok) "Sync concluído" else "Falha no sync"
+        }
+        message = "Sync iniciado (veja em Transferências)"
     }
 
     // ---------- Espaço e duplicados ----------
