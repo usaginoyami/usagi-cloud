@@ -29,6 +29,7 @@ sealed interface Screen {
     data object AddAccount : Screen
     data object Search : Screen
     data object Transfers : Screen
+    data object Storage : Screen
 }
 
 data class Clip(val file: CloudFile, val move: Boolean)
@@ -109,7 +110,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 if (s.path.isEmpty()) goTo(Screen.Home)
                 else open(s.account, s.path.substringBeforeLast('/', ""))
             }
-            is Screen.AddAccount, is Screen.Search, is Screen.Transfers -> goTo(Screen.Home)
+            is Screen.AddAccount, is Screen.Search, is Screen.Transfers, is Screen.Storage -> goTo(Screen.Home)
             Screen.Home -> return false
         }
         return true
@@ -178,6 +179,42 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }) { message = "Envio iniciado (veja em Transferências)" }
+    }
+
+    // ---------- Espaço e duplicados ----------
+
+    var scanning by mutableStateOf(false)
+        private set
+    var scanProgress by mutableStateOf("")
+        private set
+    var scanned by mutableStateOf(false)
+        private set
+    var scanFiles by mutableStateOf<List<CloudFile>>(emptyList())
+        private set
+
+    fun scanStorage() {
+        if (scanning) return
+        viewModelScope.launch {
+            scanning = true
+            scanned = false
+            val all = mutableListOf<CloudFile>()
+            for (acc in accounts) {
+                scanProgress = "Varrendo ${acc.name}..."
+                try {
+                    all += RcloneApi.listAll(acc.name)
+                } catch (e: Exception) {
+                    message = "Erro em ${acc.name}: ${e.message}"
+                }
+            }
+            scanFiles = all
+            scanned = true
+            scanning = false
+        }
+    }
+
+    fun deleteScanned(f: CloudFile) = run({ RcloneApi.delete(f) }) {
+        scanFiles = scanFiles.filterNot { it.remote == f.remote && it.path == f.path }
+        message = "Excluído: ${f.name}"
     }
 
     // ---------- Visualizar / compartilhar ----------

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -69,7 +70,7 @@ import androidx.compose.runtime.collectAsState
 
 // ---------- Helpers ----------
 
-private fun formatSize(bytes: Long?): String {
+internal fun formatSize(bytes: Long?): String {
     if (bytes == null || bytes < 0) return "?"
     val units = listOf("B", "KB", "MB", "GB", "TB")
     var v = bytes.toDouble()
@@ -110,7 +111,7 @@ private fun TextPrompt(
 }
 
 @Composable
-private fun TopBar(title: String, onBack: (() -> Unit)?, actions: @Composable () -> Unit = {}) {
+internal fun TopBar(title: String, onBack: (() -> Unit)?, actions: @Composable () -> Unit = {}) {
     TopAppBar(
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = {
@@ -131,6 +132,7 @@ fun HomeScreen(vm: CloudViewModel, engineReady: Boolean, engineError: String?, p
         Column(Modifier.fillMaxSize()) {
             TopBar("Usagi Cloud", null) {
                 TransfersButton(vm)
+                IconButton(onClick = { vm.goTo(Screen.Storage) }) { Icon(Icons.Default.PieChart, "Espaço e duplicados") }
                 IconButton(onClick = { vm.goTo(Screen.Search) }) { Icon(Icons.Default.Search, "Buscar") }
                 IconButton(onClick = { vm.refreshAccounts() }) { Icon(Icons.Default.Refresh, "Atualizar") }
             }

@@ -177,6 +177,17 @@ object RcloneApi {
         md5 = o.optJSONObject("Hashes")?.optString("md5").orEmpty(),
     )
 
+    /** Lista TODOS os arquivos de uma conta (recursivo, com hash MD5 quando a nuvem informa). */
+    suspend fun listAll(account: String): List<CloudFile> {
+        val j = call(
+            "operations/list",
+            JSONObject().put("fs", "$account:").put("remote", "")
+                .put("opt", JSONObject().put("recurse", true).put("noMimeType", true).put("filesOnly", true).put("showHash", true))
+        )
+        val arr = j.getJSONArray("list")
+        return (0 until arr.length()).map { toFile(account, arr.getJSONObject(it)) }
+    }
+
     suspend fun mkdir(account: String, path: String) {
         call("operations/mkdir", JSONObject().put("fs", "$account:").put("remote", path))
     }
