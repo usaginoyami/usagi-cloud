@@ -183,6 +183,8 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
                 message = "Conta adicionada"
                 goTo(Screen.Home)
             } catch (e: Exception) {
+                // não deixa uma conta pela metade na lista
+                try { RcloneApi.deleteAccount(name) } catch (_: Exception) { }
                 message = e.message ?: "Falha no login"
             } finally {
                 loading = false

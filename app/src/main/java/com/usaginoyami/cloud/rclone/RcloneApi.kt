@@ -96,19 +96,57 @@ object RcloneApi {
         timeoutSec: Int = 300,
     ) {
         val p = JSONObject().apply { params.forEach { (k, v) -> put(k, v) } }
-        val started = call(
+        // Modo não-interativo: o rclone devolve cada pergunta (State/Option) em vez de travar esperando
+        // resposta. OneDrive, por exemplo, pergunta o tipo de conta e qual drive usar depois do login.
+        var out = runJob(
             "config/create",
             JSONObject().put("name", name).put("type", type).put("parameters", p)
-                .put("opt", JSONObject().put("obscure", true))
-                .put("_async", true)
+                .put("opt", JSONObject().put("obscure", true).put("nonInteractive", true)),
+            timeoutSec,
         )
+        var guard = 0
+        while (guard++ < 12) {
+            val state = out.optString("State")
+            if (state.isEmpty()) return
+            val opt = out.optJSONObject("Option")
+            val answer = if (opt != null) defaultAnswer(opt) else ""
+            out = runJob(
+                "config/update",
+                JSONObject().put("name", name).put("parameters", JSONObject())
+                    .put(
+                        "opt",
+                        JSONObject().put("obscure", true).put("nonInteractive", true)
+                            .put("continue", true).put("state", state).put("result", answer)
+                    ),
+                timeoutSec,
+            )
+        }
+        throw RcloneException("A configuração da conta pediu etapas demais. Tente de novo.")
+    }
+
+    /** Resposta padrão para uma pergunta do rclone: valor default, senão o 1º exemplo, senão "true". */
+    private fun defaultAnswer(opt: JSONObject): String {
+        val def = opt.opt("Default")
+        val defStr = when {
+            def == null || def == JSONObject.NULL -> ""
+            else -> def.toString()
+        }
+        if (defStr.isNotEmpty() && defStr != "[]") return defStr
+        val ex = opt.optJSONArray("Examples")
+        if (ex != null && ex.length() > 0) return ex.getJSONObject(0).optString("Value")
+        return if (opt.optString("Type") == "bool") "true" else ""
+    }
+
+    /** Roda um comando do rclone como job assíncrono e devolve o `output` quando termina. */
+    private suspend fun runJob(cmd: String, body: JSONObject, timeoutSec: Int): JSONObject {
+        val started = call(cmd, body.put("_async", true))
         val jobId = started.getLong("jobid")
         repeat(timeoutSec) {
             delay(1000)
             val st = call("job/status", JSONObject().put("jobid", jobId))
             if (st.optBoolean("finished")) {
                 if (!st.optBoolean("success")) throw RcloneException(st.optString("error", "Login falhou"))
-                return
+                return st.optJSONObject("output") ?: JSONObject()
             }
         }
         call("job/stop", JSONObject().put("jobid", jobId))
