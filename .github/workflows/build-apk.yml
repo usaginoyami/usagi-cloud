@@ -43,15 +43,20 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          set -o pipefail
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/usagicloud.jks"
             export KEYSTORE_FILE="$RUNNER_TEMP/usagicloud.jks"
-            gradle assembleRelease --no-daemon
-            echo "Assinado com a chave fixa do Usagi Cloud (release)."
+            TASK=assembleRelease
           else
-            gradle assembleDebug --no-daemon
-            echo "AVISO: sem chave fixa, APK de debug (precisa desinstalar o antigo para atualizar)."
+            echo "::warning::Sem chave fixa: APK de debug (precisa desinstalar o antigo para atualizar)."
+            TASK=assembleDebug
           fi
+          gradle $TASK --no-daemon 2>&1 | tee build.log || {
+            # mostra os erros de compilação como anotações visíveis na página do build
+            grep -E "^e: |error:|What went wrong" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
 
       - name: Conferir se o rclone entrou no APK
         run: |
