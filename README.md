@@ -16,6 +16,10 @@ O app não implementa cada nuvem na mão: ele roda o [rclone](https://rclone.org
 
 No GitHub: aba **Actions -> Build APK -> Run workflow**. Ao terminar (uns 10 min), baixe o artefato `UsagiCloud-debug-apk` em *Artifacts*. O workflow compila o rclone para Android e já embute no APK.
 
+### APK com assinatura fixa (atualiza por cima, sem perder as contas)
+
+Cadastre 4 segredos em *Settings -> Secrets and variables -> Actions*: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Com eles, o workflow gera um APK **release** sempre assinado com a mesma chave. Sem eles, gera um APK de debug (precisa desinstalar o antigo para atualizar). Nunca suba a chave (`.jks`) para o repositório.
+
 ## Como rodar pelo Android Studio
 
 1. Abra a pasta no Android Studio (ele baixa o Gradle 8.9 sozinho).

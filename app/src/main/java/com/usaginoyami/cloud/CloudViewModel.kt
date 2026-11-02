@@ -38,7 +38,9 @@ sealed interface Screen {
     data object Sync : Screen
 }
 
-data class Clip(val file: CloudFile, val move: Boolean)
+data class Clip(val files: List<CloudFile>, val move: Boolean)
+
+enum class SortMode(val label: String) { NAME("Nome"), DATE("Data"), SIZE("Tamanho"), TYPE("Tipo") }
 
 class CloudViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -57,6 +59,67 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
     var message by mutableStateOf<String?>(null)
     var clip by mutableStateOf<Clip?>(null)
         private set
+
+    // ---------- Seleção, ordenação e modo de exibição ----------
+
+    var selected by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var sortMode by mutableStateOf(SortMode.NAME)
+        private set
+    var sortAsc by mutableStateOf(true)
+        private set
+    var gridView by mutableStateOf(false)
+        private set
+
+    /** Lista já ordenada (pastas sempre primeiro). */
+    val visibleFiles: List<CloudFile>
+        get() {
+            val cmp: Comparator<CloudFile> = when (sortMode) {
+                SortMode.NAME -> compareBy<CloudFile> { it.name.lowercase() }
+                SortMode.DATE -> compareBy<CloudFile> { it.modTime }
+                SortMode.SIZE -> compareBy<CloudFile> { it.size }
+                SortMode.TYPE -> compareBy<CloudFile> { it.name.substringAfterLast('.', "").lowercase() }
+                    .thenBy { it.name.lowercase() }
+            }
+            val ordered = if (sortAsc) cmp else cmp.reversed()
+            return files.sortedWith(compareByDescending<CloudFile> { it.isDir }.then(ordered))
+        }
+
+    fun setSort(mode: SortMode) {
+        if (mode == sortMode) sortAsc = !sortAsc else { sortMode = mode; sortAsc = mode == SortMode.NAME || mode == SortMode.TYPE }
+    }
+
+    fun toggleGrid() { gridView = !gridView }
+
+    fun toggleSelect(f: CloudFile) {
+        selected = if (f.path in selected) selected - f.path else selected + f.path
+    }
+
+    fun clearSelection() { selected = emptySet() }
+
+    fun selectAll() { selected = files.map { it.path }.toSet() }
+
+    private fun selectedFiles(): List<CloudFile> = files.filter { it.path in selected }
+
+    fun copySelected(move: Boolean) {
+        val list = selectedFiles()
+        if (list.isEmpty()) return
+        clip = Clip(list, move)
+        clearSelection()
+        message = (if (move) "Recortado" else "Copiado") + " (${list.size}). Abra outra pasta/nuvem e toque em Colar."
+    }
+
+    fun deleteSelected() {
+        val list = selectedFiles()
+        clearSelection()
+        run({ list.forEach { RcloneApi.delete(it) } }) { message = "Excluídos: ${list.size}"; reload() }
+    }
+
+    fun downloadSelected() {
+        val list = selectedFiles()
+        clearSelection()
+        list.forEach { download(it) }
+    }
 
     private val downloadDir: String
         get() = (getApplication<Application>().getExternalFilesDir("UsagiCloud")
@@ -95,6 +158,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- Navegação ----------
 
     fun open(account: String, path: String) {
+        selected = emptySet()
         screen = Screen.Browser(account, path)
         reload()
     }
@@ -105,6 +169,7 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun goTo(s: Screen) {
+        selected = emptySet()
         screen = s
         if (s is Screen.Home) refreshAccounts()
     }
@@ -141,23 +206,30 @@ class CloudViewModel(app: Application) : AndroidViewModel(app) {
         message = "Baixando ${f.name} (veja em Transferências)"
     }
 
-    fun copy(f: CloudFile) { clip = Clip(f, move = false); message = "Copiado. Abra outra pasta/nuvem e toque em Colar." }
-    fun cut(f: CloudFile) { clip = Clip(f, move = true); message = "Recortado. Abra outra pasta/nuvem e toque em Colar." }
+    fun copy(f: CloudFile) { clip = Clip(listOf(f), move = false); message = "Copiado. Abra outra pasta/nuvem e toque em Colar." }
+    fun cut(f: CloudFile) { clip = Clip(listOf(f), move = true); message = "Recortado. Abra outra pasta/nuvem e toque em Colar." }
     fun cancelClip() { clip = null }
 
     fun paste() {
         val c = clip ?: return
         val s = screen as? Screen.Browser ?: return
-        val dst = if (s.path.isEmpty()) c.file.name else "${s.path}/${c.file.name}"
-        val req = RcloneApi.copyRequest(c.file, s.account, dst, c.move)
-        TransferManager.enqueue(
-            "${c.file.remote} → ${s.account}: ${c.file.name}",
-            if (c.move) "Movendo" else "Copiando",
-            req,
-            deleteAfter = if (c.move && !c.file.isDir) c.file else null,
-        ) { ok ->
-            message = if (ok) (if (c.move) "Movido" else "Copiado") else "Falha na transferência"
-            reload()
+        var pending = c.files.size
+        var okCount = 0
+        c.files.forEach { f ->
+            val dst = if (s.path.isEmpty()) f.name else "${s.path}/${f.name}"
+            TransferManager.enqueue(
+                "${f.remote} → ${s.account}: ${f.name}",
+                if (c.move) "Movendo" else "Copiando",
+                RcloneApi.copyRequest(f, s.account, dst, c.move),
+                deleteAfter = if (c.move && !f.isDir) f else null,
+            ) { ok ->
+                if (ok) okCount++
+                if (--pending == 0) {
+                    message = if (okCount == c.files.size) (if (c.move) "Movido" else "Copiado")
+                    else "Concluído: $okCount de ${c.files.size}"
+                    reload()
+                }
+            }
         }
         clip = null
         message = "Transferência iniciada (veja em Transferências)"

@@ -37,14 +37,28 @@ jobs:
           gradle-version: "8.9"
 
       - name: Gerar APK
-        run: gradle assembleDebug --no-daemon
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/usagicloud.jks"
+            export KEYSTORE_FILE="$RUNNER_TEMP/usagicloud.jks"
+            gradle assembleRelease --no-daemon
+            echo "Assinado com a chave fixa do Usagi Cloud (release)."
+          else
+            gradle assembleDebug --no-daemon
+            echo "AVISO: sem chave fixa, APK de debug (precisa desinstalar o antigo para atualizar)."
+          fi
 
       - name: Conferir se o rclone entrou no APK
         run: |
-          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          APK=$(ls app/build/outputs/apk/*/*.apk | head -1)
           unzip -l "$APK" | grep -E "lib/arm64-v8a/librclone.so" || { echo "ERRO: librclone.so não está no APK"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: UsagiCloud-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: UsagiCloud-apk
+          path: app/build/outputs/apk/*/*.apk

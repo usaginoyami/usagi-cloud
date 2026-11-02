@@ -64,6 +64,7 @@ class RcloneService : Service() {
             "--rc-addr", "$HOST:$PORT",
             "--rc-user", USER,
             "--rc-pass", PASS,
+            "--rc-serve", // permite ler arquivos por HTTP (miniaturas)
             "--config", File(home, "rclone.conf").absolutePath,
             "--cache-dir", cache.absolutePath,
             "--log-level", "INFO",

@@ -73,7 +73,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                BackHandler(enabled = vm.screen !is Screen.Home) { vm.back() }
+                BackHandler(enabled = vm.screen !is Screen.Home || vm.selected.isNotEmpty()) {
+                    if (vm.selected.isNotEmpty()) vm.clearSelection() else vm.back()
+                }
 
                 Surface(Modifier.fillMaxSize()) {
                     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { pad ->

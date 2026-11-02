@@ -3,6 +3,30 @@
 package com.usaginoyami.cloud.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import com.usaginoyami.cloud.SortMode
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -241,31 +265,73 @@ private fun AccountCard(vm: CloudViewModel, acc: CloudAccount) {
 @Composable
 fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
     var fabMenu by remember { mutableStateOf(false) }
+    var sortMenu by remember { mutableStateOf(false) }
     var newFolder by remember { mutableStateOf(false) }
+    var confirmDeleteSel by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) vm.upload(uri)
     }
     val title = if (s.path.isEmpty()) s.account else "${s.account}/${s.path}"
+    val selecting = vm.selected.isNotEmpty()
+    val items = vm.visibleFiles
+
+    fun tap(f: CloudFile) {
+        when {
+            selecting -> vm.toggleSelect(f)
+            f.isDir -> vm.open(s.account, f.path)
+            else -> vm.openFile(f, share = false)
+        }
+    }
 
     Box(Modifier.fillMaxSize().padding(pad)) {
         Column(Modifier.fillMaxSize()) {
-            TopBar(title, onBack = { vm.back() }) {
-                TransfersButton(vm)
-                IconButton(onClick = { vm.reload() }) { Icon(Icons.Default.Refresh, "Atualizar") }
+            if (selecting) {
+                TopBar("${vm.selected.size} selecionado(s)", onBack = { vm.clearSelection() }) {
+                    IconButton(onClick = { vm.selectAll() }) { Icon(Icons.Default.SelectAll, "Selecionar tudo") }
+                    IconButton(onClick = { vm.copySelected(move = false) }) { Icon(Icons.Default.ContentCopy, "Copiar") }
+                    IconButton(onClick = { vm.copySelected(move = true) }) { Icon(Icons.Default.ContentCut, "Mover") }
+                    IconButton(onClick = { vm.downloadSelected() }) { Icon(Icons.Default.Download, "Baixar") }
+                    IconButton(onClick = { confirmDeleteSel = true }) { Icon(Icons.Default.Delete, "Excluir") }
+                }
+            } else {
+                TopBar(title, onBack = { vm.back() }) {
+                    TransfersButton(vm)
+                    IconButton(onClick = { vm.toggleGrid() }) {
+                        Icon(if (vm.gridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView, "Modo de exibição")
+                    }
+                    Box {
+                        IconButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Filled.Sort, "Ordenar") }
+                        DropdownMenu(sortMenu, { sortMenu = false }) {
+                            SortMode.entries.forEach { m ->
+                                val mark = if (m == vm.sortMode) (if (vm.sortAsc) "  ▲" else "  ▼") else ""
+                                DropdownMenuItem(text = { Text(m.label + mark) }, onClick = { vm.setSort(m) })
+                            }
+                        }
+                    }
+                    IconButton(onClick = { vm.reload() }) { Icon(Icons.Default.Refresh, "Atualizar") }
+                }
             }
             if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 96.dp)) {
-                if (vm.files.isEmpty() && !vm.loading) {
-                    item {
-                        Text(
-                            "Pasta vazia",
-                            Modifier.padding(24.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            if (items.isEmpty() && !vm.loading) {
+                Text("Pasta vazia", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (vm.gridView) {
+                LazyVerticalGrid(
+                    GridCells.Adaptive(104.dp),
+                    Modifier.weight(1f),
+                    contentPadding = PaddingValues(8.dp, 8.dp, 8.dp, 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(items) { f ->
+                        GridTile(f, vm.selected.contains(f.path), onClick = { tap(f) }, onLong = { vm.toggleSelect(f) })
                     }
                 }
-                items(vm.files) { f ->
-                    FileRow(vm, f) { if (f.isDir) vm.open(s.account, f.path) else vm.openFile(f, share = false) }
+            } else {
+                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 96.dp)) {
+                    items(items) { f ->
+                        FileRow(vm, f, vm.selected.contains(f.path), selecting, onClick = { tap(f) }, onLong = { vm.toggleSelect(f) })
+                    }
                 }
             }
             vm.clip?.let { c ->
@@ -273,8 +339,9 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
                     Modifier.fillMaxWidth().padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    val what = if (c.files.size == 1) c.files[0].name else "${c.files.size} itens"
                     Text(
-                        "${if (c.move) "Mover" else "Copiar"}: ${c.file.name}",
+                        "${if (c.move) "Mover" else "Copiar"}: $what",
                         Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -284,14 +351,16 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
                 }
             }
         }
-        Box(Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
-            FloatingActionButton(
-                onClick = { fabMenu = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-            ) { Icon(Icons.Default.Add, "Novo") }
-            DropdownMenu(fabMenu, { fabMenu = false }) {
-                DropdownMenuItem(text = { Text("Nova pasta") }, onClick = { fabMenu = false; newFolder = true })
-                DropdownMenuItem(text = { Text("Enviar arquivo") }, onClick = { fabMenu = false; picker.launch("*/*") })
+        if (!selecting) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
+                FloatingActionButton(
+                    onClick = { fabMenu = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ) { Icon(Icons.Default.Add, "Novo") }
+                DropdownMenu(fabMenu, { fabMenu = false }) {
+                    DropdownMenuItem(text = { Text("Nova pasta") }, onClick = { fabMenu = false; newFolder = true })
+                    DropdownMenuItem(text = { Text("Enviar arquivo") }, onClick = { fabMenu = false; picker.launch("*/*") })
+                }
             }
         }
     }
@@ -300,26 +369,79 @@ fun BrowserScreen(vm: CloudViewModel, s: Screen.Browser, pad: PaddingValues) {
             newFolder = false; vm.mkdir(it)
         }
     }
+    if (confirmDeleteSel) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteSel = false },
+            title = { Text("Excluir ${vm.selected.size} item(ns)?") },
+            text = { Text("Essa ação apaga da nuvem, junto com tudo dentro das pastas selecionadas.") },
+            confirmButton = { TextButton(onClick = { confirmDeleteSel = false; vm.deleteSelected() }) { Text("Excluir") } },
+            dismissButton = { TextButton(onClick = { confirmDeleteSel = false }) { Text("Cancelar") } },
+        )
+    }
 }
 
 @Composable
-private fun FileRow(vm: CloudViewModel, f: CloudFile, onClick: () -> Unit) {
+private fun GridTile(f: CloudFile, selected: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .aspectRatio(1f)
+            .clip(shape)
+            .border(if (selected) 3.dp else 0.dp, if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLong)
+    ) {
+        Thumb(f, Modifier.fillMaxSize(), iconSize = 48)
+        Text(
+            f.name,
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xAA000000)).padding(horizontal = 6.dp, vertical = 3.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+        )
+        if (selected) {
+            Icon(
+                Icons.Default.Check, null,
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape).padding(3.dp),
+                tint = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun FileRow(
+    vm: CloudViewModel,
+    f: CloudFile,
+    selected: Boolean,
+    selecting: Boolean,
+    onClick: () -> Unit,
+    onLong: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLong),
+        colors = ListItemDefaults.colors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        ),
         leadingContent = {
-            Icon(
-                if (f.isDir) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
-                null,
-                tint = if (f.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (selected) {
+                Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+            } else {
+                Icon(
+                    if (f.isDir) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                    null,
+                    tint = if (f.isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         },
         headlineContent = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = { if (!f.isDir) Text(formatSize(f.size)) },
         trailingContent = {
-            Box {
+            if (!selecting) Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Mais") }
                 DropdownMenu(menu, { menu = false }) {
                     if (!f.isDir) {

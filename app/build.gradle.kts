@@ -18,9 +18,24 @@ android {
         buildConfigField("String", "APP_BUILD", "\"${System.getenv("GITHUB_RUN_NUMBER") ?: "local"}\"")
     }
 
+    // Assinatura fixa (vem dos segredos do GitHub). Sem ela, o build usa a chave de debug padrão.
+    val ksFile = System.getenv("KEYSTORE_FILE")
+    val hasKey = !ksFile.isNullOrBlank() && file(ksFile).exists()
+    if (hasKey) {
+        signingConfigs {
+            create("usagi") {
+                storeFile = file(ksFile!!)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasKey) signingConfig = signingConfigs.getByName("usagi")
         }
     }
 
@@ -56,4 +71,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }
